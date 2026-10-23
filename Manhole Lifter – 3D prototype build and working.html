@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Top-Entry Manhole Lifter – 3D prototype build and working</title>
+<style>
+:root{--bg:#e9ece9;--panel:#fff;--ink:#1c2420;--mute:#5d6b63;--line:#cfd6d1;--acc:#c4561a;
+box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#171c19;--panel:#222a26;--ink:#e8ede9;--mute:#9aa8a0;--line:#37423c;--acc:#f0954a}}
+:root[data-theme="dark"]{--bg:#171c19;--panel:#222a26;--ink:#e8ede9;--mute:#9aa8a0;--line:#37423c;--acc:#f0954a}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{background:var(--bg);color:var(--ink);font:15px/1.4 "Barlow",system-ui,sans-serif;display:flex;flex-direction:column}
+#stage{flex:1;position:relative;min-height:120px}
+canvas{display:block;width:100%;height:100%;touch-action:none;cursor:grab}
+#leg{position:absolute;left:10px;top:10px;display:flex;flex-wrap:wrap;gap:6px;max-width:calc(100% - 20px)}
+#leg span{background:var(--panel);border:1px solid var(--line);border-radius:99px;padding:2px 10px 2px 6px;font-size:12px;display:flex;align-items:center;gap:6px}
+#leg i{width:12px;height:12px;border-radius:50%;display:inline-block;border:1px solid rgba(0,0,0,.3)}
+#panel{background:var(--panel);border-top:1px solid var(--line);padding:12px 16px;max-height:48vh;overflow:auto}
+#top{display:flex;gap:10px;align-items:center;color:var(--mute);font-size:13px;flex-wrap:wrap}
+#chip{background:var(--acc);color:#fff;border-radius:99px;padding:1px 10px;font-weight:600}
+#tabs{margin-left:auto;display:flex;gap:6px}
+h2{margin:4px 0 8px;font-size:20px;font-weight:600}
+#cols{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+#cols b{font-size:13px;color:var(--mute);font-weight:600}
+#cols p{margin:2px 0 0}
+#btns{display:flex;gap:8px;margin-top:12px}
+button{background:var(--acc);color:#fff;border:0;border-radius:8px;padding:9px 18px;font:inherit;font-weight:600;cursor:pointer}
+button.sec{background:transparent;color:var(--ink);border:1px solid var(--line)}
+button.sm{padding:3px 12px;font-size:13px}
+button.on{background:var(--ink);color:var(--panel);border-color:var(--ink)}
+button:disabled{opacity:.4;cursor:default}
+button:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
+@media (max-width:700px){#cols{grid-template-columns:1fr;gap:6px}#panel{max-height:54vh}}
+</style>
+<link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;600&display=swap" rel="stylesheet">
+</head>
+<body>
+<div id="stage"><canvas id="c"></canvas>
+<div id="leg"><span><i style="background:#2f86c9"></i>PETG</span><span><i style="background:#eee7d2"></i>Nylon</span><span><i style="background:#e0541d"></i>TPU</span><span><i style="background:#aab2ae"></i>Steel / T8 screw</span></div></div>
+<div id="panel">
+  <div id="top"><span id="chip"></span><span id="cnt"></span><span id="tabs"><button id="tb" class="sec sm">Build, part by part</button><button id="to" class="sec sm">How it works</button></span></div>
+  <h2 id="ttl"></h2>
+  <div id="cols"><div><b id="l1"></b><p id="w"></p></div><div><b id="l2"></b><p id="h"></p></div><div><b id="l3"></b><p id="y"></p></div></div>
+  <div id="btns"><button id="bk" class="sec">Back</button><button id="rp" class="sec">Replay</button><button id="nx">Next</button></div>
+</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+const canvas=document.getElementById('c'),stage=document.getElementById('stage');
+const R=new THREE.WebGLRenderer({canvas,antialias:true,alpha:true});
+R.setPixelRatio(Math.min(devicePixelRatio,2));
+const S=new THREE.Scene(),cam=new THREE.PerspectiveCamera(40,1,0.1,80);
+S.add(new THREE.HemisphereLight(0xffffff,0x556058,0.9));
+const dl=new THREE.DirectionalLight(0xffffff,0.8);dl.position.set(4,7,5);S.add(dl);
+const M=(c,o={})=>new THREE.MeshStandardMaterial(Object.assign({color:c,roughness:.55,metalness:.35},o));
+const petg=M(0x2f86c9,{metalness:.05,roughness:.35}),petgT=M(0x2f86c9,{metalness:.05,transparent:true,opacity:.4,depthWrite:false}),
+ nylon=M(0xeee7d2,{metalness:0,roughness:.6}),tpu=M(0xe0541d,{metalness:0,roughness:.9}),
+ steel=M(0xaab2ae,{metalness:.8,roughness:.35}),acme=M(0xd5d9d6,{metalness:.85,roughness:.3}),nut=M(0xb08d57,{metalness:.7}),
+ dark=M(0x101312,{metalness:0}),mRod=M(0xe24b4a),mInd=M(0xd93030,{metalness:0}),
+ mCover=M(0x3d4240,{metalness:.5,roughness:.6,transparent:true,opacity:1}),mRib=M(0x6d7471),
+ mStreet=M(0x8a8e8b,{metalness:0,roughness:.95}),mRing=M(0xe3a31c,{metalness:.2}),
+ mWall=M(0xa0614a,{metalness:0,roughness:.9,side:THREE.DoubleSide,transparent:true,opacity:.4,depthWrite:false}),
+ mBrick=M(0x6e3d2e,{metalness:0}),mFloor=M(0x25292a,{metalness:0});
+const cyl=new THREE.CylinderGeometry(1,1,1,16),tagged=[],labels=[];
+function seg(p,r,mat,tag){const m=new THREE.Mesh(cyl,mat);m.userData.r=r;p.add(m);return tg(m,tag)}
+function tg(m,tag){if(tag){m.userData.tag=tag;m.userData.m=m.material;const h=m.material.clone();h.emissive=new THREE.Color(0xffa030);h.emissiveIntensity=.5;m.userData.hm=h;tagged.push(m)}return m}
+function place(m,ax,ay,bx,by){const dx=bx-ax,dy=by-ay,r=m.userData.r;m.position.set((ax+bx)/2,(ay+by)/2,0);m.rotation.z=-Math.atan2(dx,dy);m.scale.set(r,Math.hypot(dx,dy),r)}
+function tube(p,y0,y1,r,mat,tag){const m=seg(p,r,mat,tag);place(m,0,y0,0,y1);return m}
+function add(p,geo,mat,x,y,z,tag){const m=new THREE.Mesh(geo,mat);m.position.set(x,y,z);p.add(m);return tg(m,tag)}
+function ring(o,i,d,mat,holes){const s=new THREE.Shape();s.absarc(0,0,o,0,7,false);
+ (holes||[[0,0,i]]).forEach(h=>{const p=new THREE.Path();p.absarc(h[0],h[1],h[2],0,7,true);s.holes.push(p)});
+ const m=new THREE.Mesh(new THREE.ExtrudeGeometry(s,{depth:d,bevelEnabled:false,curveSegments:48}),mat);m.rotation.x=-Math.PI/2;return m}
+function label(txt,p,x,y,z,tag){const c=document.createElement('canvas');c.width=440;c.height=72;const g=c.getContext('2d');
+ g.fillStyle='rgba(20,26,23,.88)';g.fillRect(4,8,432,56);g.fillStyle='#fff';g.font='600 23px sans-serif';g.textAlign='center';g.textBaseline='middle';g.fillText(txt,220,37);
+ const s=new THREE.Sprite(new THREE.SpriteMaterial({map:new THREE.CanvasTexture(c),depthTest:false}));
+ s.scale.set(2.2,.36,1);s.position.set(x,y,z);s.renderOrder=10;s.userData.tag=tag;p.add(s);labels.push(s)}
+
+// environment: street, manhole chamber, test cover with small access hole
+const sh=new THREE.Shape();sh.absarc(0,0,4.5,0,7,false);const sp=new THREE.Path();sp.absarc(0,0,1.3,0,7,true);sh.holes.push(sp);
+const st=new THREE.Mesh(new THREE.ShapeGeometry(sh,64),mStreet);st.rotation.x=-Math.PI/2;S.add(st);
+S.add(ring(1.3,1.02,0.1,mRing));
+add(S,new THREE.CylinderGeometry(1.02,1.02,1.9,48,1,true),mWall,0,-.95,0);
+for(let y=-.15;y>-1.9;y-=.2)add(S,new THREE.TorusGeometry(1.02,.012,6,48),mBrick,0,y,0).rotation.x=Math.PI/2;
+add(S,new THREE.CylinderGeometry(1.02,1.02,.05,48),mFloor,0,-1.92,0);
+const coverG=new THREE.Group();S.add(coverG);
+coverG.add(ring(1.0,.18,.12,mCover,[[0,0,.18],[.62,0,.07],[-.62,0,.07]]));
+[.32,.55,.8].forEach(r=>add(coverG,new THREE.TorusGeometry(r,.012,6,48),mRib,0,.12,0).rotation.x=Math.PI/2);
+
+// 1 tripod frame (PETG) and 9 M4 bolts (steel)
+const HUB=2.4,GY=HUB+.12;
+for(let k=0;k<3;k++){const g=new THREE.Group();g.rotation.y=-(k*Math.PI*2/3+.5);S.add(g);
+ place(seg(g,.045,petg,'frame'),.12,HUB,1.6,0);add(g,new THREE.CylinderGeometry(.11,.13,.05,16),petg,1.6,.025,0,'frame');
+ add(g,new THREE.SphereGeometry(.04,10,8),steel,.2,HUB-.02,0,'bolts');add(g,new THREE.SphereGeometry(.04,10,8),steel,1.2,HUB*.25,0,'bolts')}
+add(S,new THREE.CylinderGeometry(.14,.14,.12,20),petg,0,HUB,0,'frame');
+add(S,new THREE.BoxGeometry(.5,.28,.5),petgT,0,GY,0,'frame');
+[[1,1],[1,-1],[-1,1],[-1,-1]].forEach(q=>add(S,new THREE.CylinderGeometry(.02,.02,.08,10),steel,q[0]*.2,GY+.17,q[1]*.2,'bolts'));
+
+// 5 lead screw nut (static), 6 worm wheel + worm, 8 handle
+add(S,new THREE.CylinderGeometry(.09,.09,.1,20),nut,0,GY,0,'screw');
+const gearG=new THREE.Group();gearG.position.y=GY;S.add(gearG);
+add(gearG,new THREE.CylinderGeometry(.15,.15,.05,20),nylon,0,.12,0,'gear');
+for(let k=0;k<14;k++){const a=k*Math.PI*2/14,t=add(gearG,new THREE.BoxGeometry(.04,.05,.04),nylon,Math.cos(a)*.17,.12,Math.sin(a)*.17,'gear');t.rotation.y=-a}
+const crank=new THREE.Group();crank.position.set(0,GY+.12,.21);S.add(crank);
+const worm=seg(crank,.04,nylon,'gear');worm.rotation.z=Math.PI/2;worm.scale.set(.04,.5,.04);
+for(let x=-.2;x<.25;x+=.08)add(crank,new THREE.TorusGeometry(.045,.01,6,14),nylon,x,0,0,'gear').rotation.y=Math.PI/2;
+const ax=seg(crank,.02,petg,'handle');ax.rotation.z=Math.PI/2;ax.position.x=.35;ax.scale.set(.02,.2,.02);
+place(seg(crank,.02,petg,'handle'),.45,0,.45,.3);
+const kn=seg(crank,.04,petg,'handle');kn.rotation.z=Math.PI/2;kn.position.set(.5,.3,0);kn.scale.set(.04,.16,.04);
+
+// 2 telescopic shaft (PETG) + spring pin (steel); 5 lead screw; 4 actuator rod + knob
+const SH=new THREE.Group();S.add(SH);
+const LG=new THREE.Group();SH.add(LG);
+tube(SH,1.6,2.3,.07,petg,'shaft');
+const pinG=new THREE.Group();pinG.position.y=1.75;SH.add(pinG);
+const pin=seg(pinG,.012,steel,'shaft');pin.rotation.z=Math.PI/2;pin.scale.set(.012,.24,.012);pin.position.x=.1;
+add(pinG,new THREE.TorusGeometry(.03,.008,8,16),steel,.24,0,0,'shaft');
+tube(SH,2.3,3.1,.05,acme,'screw');
+for(let y=2.34;y<3.1;y+=.07)add(SH,new THREE.TorusGeometry(.05,.012,6,14),acme,0,y,0,'screw').rotation.x=Math.PI/2;
+const ind=add(SH,new THREE.CylinderGeometry(.08,.08,.05,20),mInd,0,3.15,0,'lock');
+const rod=seg(SH,.014,steel,'rod'),knob=add(SH,new THREE.SphereGeometry(.07,16,12),petg,0,3.4,0,'rod');
+tube(LG,.8,2.0,.055,petg,'shaft');tube(LG,-.04,.8,.04,petg,'shaft');
+[.45,.55,.65,.75].forEach(y=>add(LG,new THREE.SphereGeometry(.014,8,6),dark,.04,y,0,'shaft'));
+add(LG,new THREE.CylinderGeometry(.065,.065,.07,16),nylon,0,-.04,0,'arms');
+add(LG,new THREE.CylinderGeometry(.045,.075,.3,16),nylon,0,.21,0,'cam');
+const fl1=add(LG,new THREE.CylinderGeometry(.09,.09,.02,20),nylon,0,0,0,'cam'),fl2=add(LG,new THREE.CylinderGeometry(.09,.09,.02,20),nylon,0,0,0,'cam');
+const latch=add(LG,new THREE.BoxGeometry(.07,.05,.07),nylon,.11,0,0,'lock');
+const PIV=-.04,L=.6,D=.3,LL=.45,CX=.06,START=.85,arms=[];
+for(let k=0;k<4;k++){const g=new THREE.Group();g.rotation.y=k*Math.PI/2;LG.add(g);
+ arms.push({a:seg(g,.022,nylon,'arms'),l:seg(g,.011,nylon,'cam'),pad:add(g,new THREE.BoxGeometry(.2,.04,.1),tpu,0,0,0,'pads'),
+  ro:add(g,new THREE.SphereGeometry(.024,10,8),nylon,0,0,0,'cam'),pn:add(g,new THREE.SphereGeometry(.02,8,6),steel,0,0,0,'arms')})}
+label('Tripod frame · PETG',S,1.3,1.5,.9,'frame');label('Telescopic shaft · PETG',SH,.9,1.5,0,'shaft');
+label('Arms + steel dowel pins',LG,.95,-.35,0,'arms');label('Cam, rollers, collar · Nylon',LG,.9,.25,0,'cam');
+label('Actuator rod + pull knob',SH,1.0,3.5,0,'rod');label('Latch + indicator',SH,1.0,3.05,0,'lock');
+label('Lead screw (T8) + nut',S,1.0,3.05,.2,'screw');label('Worm + wheel · Nylon',S,.9,2.75,.3,'gear');
+label('Arm pads · TPU',LG,.95,-.75,0,'pads');label('T-handle · PETG',S,1.0,3.0,.21,'handle');label('M4 bolts + nuts · Steel',S,1.0,2.2,.6,'bolts');
+
+// stage at which each part tag appears in the build
+const ST={frame:1,shaft:2,arms:3,lock:3,cam:4,rod:4,screw:5,gear:6,pads:7,handle:8,bolts:9};
+const B=(v,t,tags,mat,fin,role,cm)=>({k:'B',v,t,hl:tags,mat,fin,role,cam:cm});
+const O=(t,w,h,y,hl,cm,x)=>Object.assign({k:'O',v:9,t,w,h,y,hl,cam:cm,ghost:1},x);
+const STEPS=[
+B(0,'Start: test cover with a small access hole',[],'Test cover and manhole','Real cast-iron cover','The prototype is demonstrated on a light test cover. A small hole lets the folded arms pass through and lock underneath.',[0,.2,0,9,.75,1.2]),
+B(1,'Tripod frame',['frame'],'PETG: printed legs and hub','Galvanised mild steel tube (E250)','Three legs and a hub stand on the road and hold the gearbox and shaft above the manhole.',[0,1.2,0,8,.8,1.2]),
+B(2,'Telescopic shaft + spring pin',['shaft'],'PETG: printed tubes with pin holes','304 stainless steel seamless tube','Nested tubes with a row of holes. A steel spring pin snaps into the nearest hole and sets the length for different manhole depths.',[0,1.6,0,6.5,.9,1.35]),
+B(3,'Folding arms, dowel pins, latch',['arms','lock'],'Nylon arms, steel dowel pins','42CrMo4 alloy steel, hardened','Four arms hinge on a hub and swing out under the cover. Steel dowel pins are the pivots. The latch and the red/green indicator hold the arms locked.',[0,.2,0,4.5,.7,1.25]),
+B(4,'Cam, rollers, sliding collar, rod',['cam','rod'],'Nylon printed cam and rollers','Case-hardened steel (20MnCr5)','The collar rides the cam on rollers and links join it to each arm. A rod inside the shaft and the knob on top move the collar, so all arms open together.',[0,.2,0,4.5,.7,1.25]),
+B(5,'Lead screw + nut',['screw'],'Printed Acme thread or bought T8 screw','EN8 steel screw, bronze nut','The screw climbs through the nut as the gear turns. The locked arms carry the cover up with it.',[0,2.5,0,5,.8,1.15]),
+B(6,'Worm gear pair',['gear'],'Nylon printed worm and wheel','Hardened steel worm, bronze wheel','The worm turns the large wheel many times slower. This reduction multiplies hand torque into lifting force.',[0,2.5,0,3.5,.8,1.15]),
+B(7,'Arm pads',['pads'],'TPU (flexible) printed pads','Steel plate faced with polyurethane','Soft pads on the arm tips grip the underside of the cover without slipping or marking it.',[0,0,0,4.5,.7,1.25]),
+B(8,'T-handle',['handle'],'PETG printed T-handle','Mild steel bar with rubber grip','The only place the worker puts in effort. Turn one way to lift and the other way to lower. It folds for storage.',[.2,2.6,.2,3.8,1.1,1.3]),
+B(9,'Fasteners',['bolts'],'M4 steel bolts and nuts','A2 stainless bolts, zinc coating','Bolts join the legs to the hub and the gearbox to the frame.',[0,2.2,0,6,.8,1.15]),
+B(9,'Assembled prototype',[],'PETG frame, shaft, handle · Nylon arms, cam, gears · TPU pads · steel pins and bolts','Steel, stainless and bronze parts','The printed prototype proves the mechanism at reduced load. Next: how it works, in the five steps of the operating sequence.',[0,1.6,0,12,.75,1.1]),
+O('Position',"Place the folded tool over the cover and lower the folded arms through the access hole.",'The tripod stands on the road. The shaft slides down until the arm hub is just under the cover.','A folded tool fits a small hole, so the cover stays strong.',['arms','shaft'],[0,.5,0,8,.8,1.2],{s:{ins:1}}),
+O('Adjust',"Set the shaft length with the spring pin, then position the sliding collar.",'Pull the pin out, slide the lower tube to the needed length, release. The pin locks in the nearest hole.','Manhole depths differ. This gives fast, tool-free length adjustment.',['shaft'],[0,1.6,0,6.5,.9,1.35],{s:{adj:0},pin:1}),
+O('Engage and lock',"Arms open into the lifting holes. Push the linkage past centre and engage the latch.",'Pull the knob up. The rod lifts the collar, the rollers follow the cam and the links swing all four arms out together. Past centre, the load pushes the linkage tighter. The latch clicks and the indicator turns green.','The arms must be held firmly before any lift. The latch is a backup if the tool is bumped.',['cam','rod','arms','lock'],[0,.2,0,4.5,.7,1.25],{s:{u:1,latch:1},win:{u:[0,.6],latch:[.6,1]}}),
+O('Lift',"Turn the handle. The worm and wheel drive the lead screw and raise the cover through the locked arms.",'The crank turns the worm. The wheel turns far slower and drives the screw upward. The cover rises with the locked arms.','A small hand force becomes a large lifting force, with slow, controlled motion that holds position.',['screw','gear','handle'],[0,2.1,0,6,.8,1.15],{s:{lift:1},dur:6000}),
+O('Move',"Raise to a safe height and reposition the tool. Reverse the handle to lower.",'Turn the handle back the other way. The screw lowers the cover into its seat. Then release the latch, push the knob down so the arms fold, and draw the tool out.','The tool is ready for the next manhole, with nothing installed permanently.',['handle','screw','lock'],[0,1.4,0,8,.75,1.15],{s:{lift:0},win:{lift:[.4,1]},dur:6500})
+];
+const firstO=STEPS.findIndex(s=>s.k=='O');
+let e={adj:.3,ins:0,u:0,lift:0,latch:0};const ends=[];
+STEPS.forEach(s=>{e=Object.assign({},e,s.s||{});ends.push(e)});
+const cur=Object.assign({},ends[0]);let idx=0,from=ends[0],T0=0,ang=0,pinOut=0,goal,userMoved=false;
+const $=id=>document.getElementById(id);
+function go(i,replay){idx=Math.max(0,Math.min(STEPS.length-1,i));const s=STEPS[idx],b=s.k=='B';
+ from=Object.assign({},replay&&idx>0?ends[idx-1]:cur);T0=performance.now();userMoved=false;
+ $('chip').textContent=b?(idx&&idx<firstO-1?'Part '+idx+' of 9':'Build'):'Working '+(idx-firstO+1)+' of 5';$('cnt').textContent='Step '+(idx+1)+' of '+STEPS.length;
+ $('ttl').textContent=s.t;
+ $('l1').textContent=b?'Prototype material':'What happens';$('l2').textContent=b?'Final product':'How it works';$('l3').textContent=b?'Job in the working':'Why it is used';
+ $('w').textContent=b?s.mat:s.w;$('h').textContent=b?s.fin:s.h;$('y').textContent=b?s.role:s.y;
+ $('bk').disabled=idx==0;$('nx').disabled=idx==STEPS.length-1;
+ $('tb').classList.toggle('on',b);$('to').classList.toggle('on',!b);
+ const c=s.cam;goal={x:c[0],y:c[1],z:c[2],r:c[3],th:c[4],ph:c[5]}}
+$('nx').onclick=()=>go(idx+1);$('bk').onclick=()=>go(idx-1);$('rp').onclick=()=>go(idx,true);
+$('tb').onclick=()=>go(0);$('to').onclick=()=>go(firstO);
+const cl=(x,a,b)=>Math.min(1,Math.max(0,(x-a)/(b-a)));
+function update(s){
+ const u=s.u,th=u*Math.PI/2,dx=Math.sin(th),dy=-Math.cos(th),A={x:dx*D,y:PIV+dy*D},yc=A.y+Math.sqrt(LL*LL-(A.x-CX)**2);
+ LG.position.y=s.adj;fl1.position.y=yc-.05;fl2.position.y=yc+.05;
+ arms.forEach(o=>{place(o.a,0,PIV,dx*L,PIV+dy*L);place(o.l,CX,yc,A.x,A.y);o.pad.position.set(dx*L,PIV+dy*L+.02,0);o.ro.position.set(CX,yc,0);o.pn.position.set(A.x,A.y,0)});
+ latch.position.y=yc+.09;latch.scale.setScalar(.01+s.latch);
+ const bottom=s.adj+yc+.05,top=3.3+(yc-.106);place(rod,0,bottom,0,top);knob.position.y=top+.05;
+ ind.material.color.setRGB(.85-.65*s.latch,.2+.55*s.latch,.2);
+ const h=s.lift*.6;SH.position.y=h+(1-s.ins)*START;pinG.position.x=pinOut*.15;
+ coverG.position.y=(u>.98&&s.ins>.99)?h:0;
+ ang=h*40;crank.rotation.x=ang;gearG.rotation.y=-ang/14;
+}
+let th=.75,ph=1.1,rad=12,tgt=new THREE.Vector3(0,1.6,0),last=0;
+function frame(now){
+ const dt=Math.min(.1,(now-last)/1000);last=now;
+ const s=STEPS[idx],p=cl((now-T0)/(s.dur||4000),0,1),to=ends[idx];
+ for(const k in to){const w=(s.win&&s.win[k])||[0,1],q=cl(p,w[0],w[1]);cur[k]=from[k]+(to[k]-from[k])*q*q*(3-2*q)}
+ pinOut=s.pin?cl(p,0,.2)-cl(p,.8,1):0;
+ update(cur);
+ mCover.opacity=s.ghost?.28:1;mCover.depthWrite=!s.ghost;
+ const hs=new Set(s.hl);
+ tagged.forEach(m=>{const t=m.userData.tag,vis=ST[t]<=s.v||s.k=='O';m.visible=vis;const on=hs.has(t);m.material=on?m.userData.hm:m.userData.m;if(on)m.userData.hm.emissiveIntensity=.3+.25*Math.sin(now/280)});
+ labels.forEach(l=>l.visible=hs.has(l.userData.tag));
+ if(!userMoved&&goal){const k=1-Math.exp(-dt*3),asp=cam.aspect<1?1.5:1;
+  tgt.x+=(goal.x-tgt.x)*k;tgt.y+=(goal.y-tgt.y)*k;tgt.z+=(goal.z-tgt.z)*k;rad+=(goal.r*asp-rad)*k;th+=(goal.th-th)*k;ph+=(goal.ph-ph)*k}
+ setCam();R.render(S,cam);requestAnimationFrame(frame)}
+function setCam(){cam.position.set(tgt.x+rad*Math.sin(ph)*Math.sin(th),tgt.y+rad*Math.cos(ph),tgt.z+rad*Math.sin(ph)*Math.cos(th));cam.lookAt(tgt)}
+let drag=false,lx=0,ly=0;
+canvas.addEventListener('pointerdown',e=>{drag=true;lx=e.clientX;ly=e.clientY;canvas.setPointerCapture(e.pointerId)});
+canvas.addEventListener('pointerup',()=>drag=false);
+canvas.addEventListener('pointermove',e=>{if(!drag)return;userMoved=true;th-=(e.clientX-lx)*.008;ph=Math.min(1.7,Math.max(.2,ph-(e.clientY-ly)*.008));lx=e.clientX;ly=e.clientY});
+canvas.addEventListener('wheel',e=>{e.preventDefault();userMoved=true;rad=Math.min(18,Math.max(2.5,rad*(1+e.deltaY*.001)))},{passive:false});
+function size(){const w=stage.clientWidth,h=stage.clientHeight;R.setSize(w,h,false);cam.aspect=w/h;cam.updateProjectionMatrix()}
+new ResizeObserver(size).observe(stage);size();go(0);requestAnimationFrame(frame);
+</script>
+</body>
+</html>
