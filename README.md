@@ -44,6 +44,12 @@ Before                           After
 0 shurts(short legs)             4 shurts(each attaches to a leg) 
 
 Reason : the mechanism of 3 legs won't be able to lift the manhole to a particular distance but the 4 leg mechanism improves the structure. 
+## [23-11-26] - Some changes in the model 
+Before                                           After 
+links or short arms were present to open         Removing those links and trying something to adjust 
+up the arms                                      the arms 
+
+Reason : While lifting the manhole the links would be a hindrance. 
 
 ## Components to print and to purchase 
 
@@ -79,5 +85,7 @@ Small pawl spring (torsion or compression), plus a return spring for the latch
 Thin steel rod for the actuator inside the shaft
 M4 bolts and nuts, about 20: 4 strut-to-gearbox, 4 gearbox housing, 4 to fix the rack strip, spares
 PETG, nylon and TPU filament
+
+
 
 
